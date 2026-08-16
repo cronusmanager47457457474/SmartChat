@@ -64,11 +64,11 @@ final class AIService {
             "max_tokens": maxTokens
         ])
 
-        let request = request
+        let requestForTask = request
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await URLSession.shared.bytes(for: requestForTask)
                     if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
                         let data = try await bytes.reduce(into: Data()) { $0.append($1) }
                         let body = String(decoding: data, as: UTF8.self)
@@ -155,11 +155,11 @@ final class AIService {
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let request = request
+        let requestForTask = request
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await URLSession.shared.bytes(for: requestForTask)
                     if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
                         let data = try await bytes.reduce(into: Data()) { $0.append($1) }
                         let body = String(decoding: data, as: UTF8.self)
