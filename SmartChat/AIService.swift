@@ -65,27 +65,31 @@ final class AIService {
         ])
 
         return AsyncThrowingStream { continuation in
-            do {
-                let (bytes, response) = try await URLSession.shared.bytes(for: request)
-                if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                    let body = try? await bytes.reduce(into: "") { $0.append(String(decoding: $1, as: UTF8.self)) }
-                    let message = extractErrorMessage(body: body) ?? "Server returned HTTP \(http.statusCode)"
-                    continuation.finish(throwing: AIError(message: message))
-                    return
-                }
-                for try await line in bytes.lines {
-                    guard line.hasPrefix("data:") else { continue }
-                    let json = String(line.dropFirst(5)).trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !json.isEmpty else { continue }
-                    if json == "[DONE]" { break }
-                    if let token = parseOpenRouterDelta(json: json), !token.isEmpty {
-                        continuation.yield(token)
+            let task = Task {
+                do {
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                        let data = try await bytes.reduce(into: Data()) { $0.append($1) }
+                        let body = String(decoding: data, as: UTF8.self)
+                        let message = extractErrorMessage(body: body) ?? "Server returned HTTP \(http.statusCode)"
+                        continuation.finish(throwing: AIError(message: message))
+                        return
                     }
+                    for try await line in bytes.lines {
+                        guard line.hasPrefix("data:") else { continue }
+                        let json = String(line.dropFirst(5)).trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !json.isEmpty else { continue }
+                        if json == "[DONE]" { break }
+                        if let token = parseOpenRouterDelta(json: json), !token.isEmpty {
+                            continuation.yield(token)
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: mapURLError(error))
                 }
-                continuation.finish()
-            } catch {
-                continuation.finish(throwing: mapURLError(error))
             }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
@@ -151,26 +155,30 @@ final class AIService {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         return AsyncThrowingStream { continuation in
-            do {
-                let (bytes, response) = try await URLSession.shared.bytes(for: request)
-                if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                    let body = try? await bytes.reduce(into: "") { $0.append(String(decoding: $1, as: UTF8.self)) }
-                    let message = extractErrorMessage(body: body) ?? "Server returned HTTP \(http.statusCode)"
-                    continuation.finish(throwing: AIError(message: message))
-                    return
-                }
-                for try await line in bytes.lines {
-                    guard line.hasPrefix("data:") else { continue }
-                    let json = String(line.dropFirst(5)).trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !json.isEmpty else { continue }
-                    if let token = parseGeminiToken(json: json), !token.isEmpty {
-                        continuation.yield(token)
+            let task = Task {
+                do {
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                        let data = try await bytes.reduce(into: Data()) { $0.append($1) }
+                        let body = String(decoding: data, as: UTF8.self)
+                        let message = extractErrorMessage(body: body) ?? "Server returned HTTP \(http.statusCode)"
+                        continuation.finish(throwing: AIError(message: message))
+                        return
                     }
+                    for try await line in bytes.lines {
+                        guard line.hasPrefix("data:") else { continue }
+                        let json = String(line.dropFirst(5)).trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !json.isEmpty else { continue }
+                        if let token = parseGeminiToken(json: json), !token.isEmpty {
+                            continuation.yield(token)
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: mapURLError(error))
                 }
-                continuation.finish()
-            } catch {
-                continuation.finish(throwing: mapURLError(error))
             }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
@@ -223,6 +231,8 @@ final class AIService {
         let ns = error as NSError
         guard ns.domain == NSURLErrorDomain else { return error }
         switch ns.code {
+        case NSURLErrorCancelled:
+            return CancellationError()
         case NSURLErrorNotConnectedToInternet, NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost:
             return AIError(message: "Could not reach the AI server. Check your internet connection and try again.")
         case NSURLErrorTimedOut:
