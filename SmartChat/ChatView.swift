@@ -160,6 +160,7 @@ struct ChatView: View {
     }
 }
 
+@MainActor
 struct ChatScreen: View {
     @Bindable var viewModel: ChatViewModel
     @State private var showSettings = false
