@@ -64,6 +64,7 @@ final class AIService {
             "max_tokens": maxTokens
         ])
 
+        let request = request
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -154,6 +155,7 @@ final class AIService {
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
+        let request = request
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
